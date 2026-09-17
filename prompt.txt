@@ -1,0 +1,68 @@
+// for create the image1
+
+@Create image **Cinematic Snowy Night Landscape (16:9) – Master Prompt**
+
+> **An ultra-realistic cinematic nighttime view of a vast snow-covered landscape during the middle of the night. The composition is perfectly centered in a 16:9 aspect ratio. A premium modern snow-covered environment fills the frame, with smooth layers of fresh untouched snow extending toward the distant horizon. The foreground features subtle natural snow textures, soft wind-swept patterns, and delicate crystalline details illuminated by soft ambient moonlight.**
+>
+> **Above, a deep midnight-blue sky gradually fades into near-black. Gentle snowflakes drift slowly through the atmosphere, catching the moonlight and creating subtle glowing particles. In the far distance, snow-covered trees and low mountain silhouettes emerge through a soft atmospheric haze. A faint cool-blue glow appears along the horizon, creating depth and separation between the snowy ground and the night sky.**
+>
+> **The entire environment is calm, pristine, and untouched. Soft moonlight creates realistic highlights across the snow surface, while subtle volumetric mist moves through the distant landscape. The snow has physically accurate reflections and soft shadows, with realistic depth and natural variation in texture. The scene feels cold, quiet, luxurious, cinematic, and immersive.**
+>
+> **Hyper-realistic, HDR photography, cinematic color grading, volumetric moonlight, global illumination, ray-traced reflections, physically accurate snow material, ultra-detailed snow textures, realistic atmospheric perspective, DSLR quality, photorealistic, 8K resolution, ultra-sharp focus, realistic depth of field, high dynamic range, premium winter aesthetic, Apple-inspired minimalism, elegant composition, no distractions.**
+
+**Negative Prompt**
+
+> **text, logo, watermark, people, vehicles, buildings in foreground, roads, city lights, street lights, sunrise, sunset, daytime, rain, storm, lightning, dirty snow, footprints, tire tracks, melting snow, unrealistic snow, excessive fog, blur, noise, grain, low resolution, cartoon, anime, painting, illustration, oversaturated colors, extra objects, cropped frame, asymmetrical composition, low quality, artifacts, unrealistic lighting, plastic-looking snow**
+
+
+//for create the image2
+
+
+@Create image **Master Prompt – Snow Mountain Emerging from Snow Clouds (Apple Cinematic Night)**
+
+> **Create an ultra-realistic cinematic night scene featuring only the upper section of a majestic snow-covered mountain emerging through an endless sea of dense, soft, snow-like clouds. The lower portion of the mountain is completely hidden beneath the massive cloud layer, making it appear as though the mountain is floating above an infinite white world.**
+>
+> **The scene takes place high above the snowy cloud layer under a deep midnight-blue sky that gradually fades into black. The horizon emits a subtle cool-blue glow, creating a calm, luxurious, mysterious atmosphere. The mountain is distant and perfectly centered in the composition, occupying only about 15–20% of the frame to create a powerful sense of scale and isolation.**
+>
+> **The mountain peak is covered in pristine untouched snow, softly illuminated by cool moonlight. Elegant blue-gray highlights define the ridges and contours of the snow while most of the mountain remains subtly silhouetted against the dark sky. Tiny snow particles drift gently through the air, catching the moonlight with delicate sparkling highlights.**
+>
+> **Massive layers of soft snow clouds surround the mountain from every direction. Moonlight creates delicate silver-white highlights across the cloud tops, with subtle shadows adding realistic depth and dimensionality. The snow clouds extend endlessly toward the horizon, creating a peaceful, dreamlike, otherworldly feeling.**
+>
+> **A very subtle atmospheric glow surrounds the mountain peak, creating separation without looking artificial. The entire scene feels cold, silent, pristine, cinematic, and premium. Minimal composition, Apple-inspired luxury aesthetic, premium winter travel advertisement style, symmetrical framing, cinematic HDR photography, ultra-realistic snow textures, global illumination, volumetric moonlight, physically accurate snow materials, atmospheric perspective, realistic depth of field, DSLR quality, 8K, masterpiece, photorealistic, dark navy and icy-blue color grading, subtle film contrast, elegant highlights, no distractions.**
+
+### **Negative Prompt**
+
+> **Eiffel Tower, buildings, city skyline, city lights, roads, vehicles, people, cabins, houses, trees in foreground, airplane, airplane wing, airplane window, text, logo, watermark, sunrise, sunset, daylight, warm orange lighting, colorful lighting, rain, heavy storm, lightning, excessive fog, dirty snow, footprints, tire tracks, melting snow, cartoon, anime, painting, illustration, low quality, blur, noise, grain, oversaturated colors, unrealistic snow, artificial clouds, excessive glow, artifacts, cropped composition, asymmetrical composition, distorted mountain, unrealistic proportions.**
+
+
+
+// create video-> https://labs.google/
+
+
+### **Google Flow Prompt – Snow Transition**
+
+> **Create a smooth, ultra-cinematic camera movement beginning above a vast snow-covered landscape at night. The camera is perfectly centered, looking toward an endless field of pristine snow beneath a deep midnight-blue sky. The environment is completely calm and untouched, with soft moonlight creating subtle silver-blue highlights across the snow surface.**
+>
+> **The camera slowly and steadily pushes forward toward the snowy landscape with elegant, cinematic motion. As the camera approaches the surface, it continues seamlessly forward without any visible transition, cut, distortion, or sudden change in perspective. The snow-covered ground gradually fills the frame while the distant horizon disappears naturally into the atmosphere.**
+>
+> **The camera then begins gliding forward through a dense layer of soft, powdery snow particles and atmospheric snow clouds. The entire screen slowly fills with volumetric white snow illuminated by subtle cool moonlight. The movement should feel as if the viewer is peacefully flying through an endless winter environment. Snow particles drift naturally past the camera with realistic depth, scale, and atmospheric motion.**
+>
+> **Gradually reveal the upper portion of a distant snow-covered mountain emerging from the endless snow clouds. The mountain remains centered and partially obscured by the volumetric snow layer, creating a dreamlike transition into a vast frozen world. Its snowy ridges catch delicate blue-white moonlight while the lower portion remains hidden beneath the clouds.**
+>
+> **Maintain a consistent dark navy-blue and icy-white nighttime color palette throughout the entire shot. Use soft cinematic moonlight, HDR realism, volumetric snow, realistic atmospheric perspective, physically accurate snow simulation, subtle drifting snow particles, realistic depth of field, and premium winter travel advertisement aesthetics.**
+>
+> **The camera movement must remain slow, stable, perfectly smooth, and continuous with no cuts, jump cuts, camera shake, zoom jumps, flickering, or sudden acceleration. The transition from the open snowy environment into the dense snow clouds and finally toward the distant mountain should feel completely seamless and natural. End the shot with the frame surrounded by soft volumetric snow clouds and the distant mountain subtly visible through them, ready for the next cinematic transition.**
+>
+> **Style:** Ultra-realistic, photorealistic, Apple-inspired minimalism, luxury winter travel commercial, cinematic HDR, 8K, masterpiece quality, realistic snow physics, volumetric lighting, elegant composition, premium cinematic atmosphere.
+
+### **Negative Prompt**
+
+> **camera shake, fast movement, cuts, jump cuts, sudden acceleration, zoom jumps, flicker, blur, low quality, artifacts, people, vehicles, buildings, houses, roads, city lights, airplane, airplane wing, airplane window, text, logo, watermark, Eiffel Tower, trees in foreground, sunrise, sunset, daylight, rain, storm, lightning, colorful lighting, oversaturated colors, cartoon, anime, painting, illustration, distorted snow, artificial-looking snow, unrealistic clouds, excessive fog, dirty snow, footprints, tire tracks, melting snow, noisy image, grain, warped mountain, unrealistic mountain proportions.**
+
+
+
+// for create the component
+
+Create a smooth scrool animation with the provided file Dont add any
+other components or text the scroll animation ahould be smooth and
+provided alocal host link
