@@ -30,11 +30,15 @@ const FRAME_URLS = Array.from({ length: TOTAL_FRAMES }, (_, i) => {
   return `/image-webp/${frameNumber}.webp`;
 });
 
-// Number of frames loaded immediately when page starts
-const INITIAL_FRAMES = 12;
+// Number of frames to load immediately.
+const INITIAL_FRAMES = 15;
 
-// Number of frames loaded in each background batch
-const BATCH_SIZE = 15;
+// How many images can load at the same time in background.
+const MAX_CONCURRENT_LOADS = 6;
+
+// How many frames around current scroll position to prioritize.
+const PRELOAD_AHEAD = 10;
+const PRELOAD_BEHIND = 5;
 
 export default function App() {
   // ============================================================
@@ -49,8 +53,12 @@ export default function App() {
 
   const imagesRef = useRef([]);
   const loadingRef = useRef(new Set());
+  const loadedRef = useRef(new Set());
 
-  const scrollFrameRef = useRef(0);
+  const loadQueueRef = useRef([]);
+  const activeLoadsRef = useRef(0);
+
+  const lastScrollFrameRef = useRef(0);
 
   // ============================================================
   // STATE
@@ -79,7 +87,7 @@ export default function App() {
 
     // ----------------------------------------------------------
     // If requested frame is not ready,
-    // find the closest loaded frame.
+    // find nearest loaded frame.
     // ----------------------------------------------------------
 
     if (
@@ -103,7 +111,7 @@ export default function App() {
         }
       }
 
-      // Search forwards if needed
+      // Search forwards
       if (fallbackIndex === -1) {
         for (let i = frameIndex + 1; i < TOTAL_FRAMES; i++) {
           const candidate = imagesRef.current[i];
@@ -124,9 +132,9 @@ export default function App() {
       image = imagesRef.current[fallbackIndex];
     }
 
-    // ----------------------------------------------------------
-    // Canvas size
-    // ----------------------------------------------------------
+    // ==========================================================
+    // CANVAS SIZE
+    // ==========================================================
 
     const width = window.innerWidth;
     const height = window.innerHeight;
@@ -139,9 +147,9 @@ export default function App() {
       canvas.height = height;
     }
 
-    // ----------------------------------------------------------
-    // Image dimensions
-    // ----------------------------------------------------------
+    // ==========================================================
+    // IMAGE SIZE
+    // ==========================================================
 
     const imageWidth = image.naturalWidth;
     const imageHeight = image.naturalHeight;
@@ -156,9 +164,9 @@ export default function App() {
     let offsetX;
     let offsetY;
 
-    // ----------------------------------------------------------
-    // Cover behavior
-    // ----------------------------------------------------------
+    // ==========================================================
+    // COVER
+    // ==========================================================
 
     if (canvasRatio > imageRatio) {
       renderWidth = width;
@@ -174,9 +182,9 @@ export default function App() {
       offsetY = 0;
     }
 
-    // ----------------------------------------------------------
-    // Draw
-    // ----------------------------------------------------------
+    // ==========================================================
+    // DRAW
+    // ==========================================================
 
     ctx.clearRect(0, 0, width, height);
 
@@ -193,46 +201,40 @@ export default function App() {
   };
 
   // ============================================================
-  // LOAD SINGLE FRAME
+  // UPDATE LOADING PROGRESS
+  // ============================================================
+
+  const updateProgress = () => {
+    const loadedCount = loadedRef.current.size;
+
+    const percent = Math.floor(
+      (loadedCount / TOTAL_FRAMES) * 100
+    );
+
+    setLoadedPercent(percent);
+  };
+
+  // ============================================================
+  // LOAD ONE FRAME
   // ============================================================
 
   const loadFrame = (index, priority = false) => {
     return new Promise((resolve) => {
+      // --------------------------------------------------------
       // Already loaded
-      const existingImage = imagesRef.current[index];
+      // --------------------------------------------------------
 
-      if (
-        existingImage &&
-        existingImage.complete &&
-        existingImage.naturalWidth > 0
-      ) {
-        resolve(existingImage);
+      if (loadedRef.current.has(index)) {
+        resolve(imagesRef.current[index]);
         return;
       }
 
+      // --------------------------------------------------------
       // Already loading
+      // --------------------------------------------------------
+
       if (loadingRef.current.has(index)) {
-        const checkExisting = () => {
-          const image = imagesRef.current[index];
-
-          if (
-            image &&
-            image.complete &&
-            image.naturalWidth > 0
-          ) {
-            resolve(image);
-            return;
-          }
-
-          if (!loadingRef.current.has(index)) {
-            resolve(null);
-            return;
-          }
-
-          requestAnimationFrame(checkExisting);
-        };
-
-        checkExisting();
+        resolve(null);
         return;
       }
 
@@ -241,7 +243,7 @@ export default function App() {
       const image = new Image();
 
       // --------------------------------------------------------
-      // Browser fetch priority
+      // Browser priority
       // --------------------------------------------------------
 
       if ('fetchPriority' in image) {
@@ -263,39 +265,25 @@ export default function App() {
 
         imagesRef.current[index] = image;
 
-        // Decode before using where supported
+        // Decode image before using it
         if (image.decode) {
           try {
             await image.decode();
           } catch {
-            // Image is still usable if decode fails
+            // Ignore decode errors
           }
         }
 
-        // ------------------------------------------------------
-        // Progress
-        // ------------------------------------------------------
+        loadedRef.current.add(index);
 
-        const loadedCount = imagesRef.current.filter(
-          (img) =>
-            img &&
-            img.complete &&
-            img.naturalWidth > 0
-        ).length;
-
-        const percent = Math.floor(
-          (loadedCount / TOTAL_FRAMES) * 100
-        );
-
-        setLoadedPercent((previous) =>
-          Math.max(previous, percent)
-        );
+        updateProgress();
 
         resolve(image);
       };
 
       image.onerror = () => {
         loadingRef.current.delete(index);
+
         resolve(null);
       };
 
@@ -304,19 +292,126 @@ export default function App() {
   };
 
   // ============================================================
-  // PROGRESSIVE PRELOADING
+  // CONTROLLED BACKGROUND LOADER
+  // ============================================================
+
+  const processQueue = () => {
+    while (
+      activeLoadsRef.current < MAX_CONCURRENT_LOADS &&
+      loadQueueRef.current.length > 0
+    ) {
+      const nextItem = loadQueueRef.current.shift();
+
+      if (!nextItem) break;
+
+      const {
+        index,
+        priority,
+      } = nextItem;
+
+      // Skip if already loaded/loading
+      if (
+        loadedRef.current.has(index) ||
+        loadingRef.current.has(index)
+      ) {
+        continue;
+      }
+
+      activeLoadsRef.current++;
+
+      loadFrame(index, priority)
+        .finally(() => {
+          activeLoadsRef.current--;
+
+          // Continue queue
+          processQueue();
+        });
+    }
+  };
+
+  // ============================================================
+  // ADD FRAME TO QUEUE
+  // ============================================================
+
+  const queueFrame = (index, priority = false) => {
+    if (index < 0 || index >= TOTAL_FRAMES) {
+      return;
+    }
+
+    if (loadedRef.current.has(index)) {
+      return;
+    }
+
+    if (loadingRef.current.has(index)) {
+      return;
+    }
+
+    // Prevent duplicate queue entries
+    const alreadyQueued =
+      loadQueueRef.current.some(
+        (item) => item.index === index
+      );
+
+    if (alreadyQueued) return;
+
+    if (priority) {
+      // Put priority frame at front
+      loadQueueRef.current.unshift({
+        index,
+        priority: true,
+      });
+    } else {
+      loadQueueRef.current.push({
+        index,
+        priority: false,
+      });
+    }
+
+    processQueue();
+  };
+
+  // ============================================================
+  // PRIORITIZE FRAMES AROUND CURRENT SCROLL
+  // ============================================================
+
+  const prioritizeAroundFrame = (frameIndex) => {
+    const start = Math.max(
+      0,
+      frameIndex - PRELOAD_BEHIND
+    );
+
+    const end = Math.min(
+      TOTAL_FRAMES - 1,
+      frameIndex + PRELOAD_AHEAD
+    );
+
+    // ----------------------------------------------------------
+    // First prioritize frames in scroll direction.
+    // ----------------------------------------------------------
+
+    for (let i = start; i <= end; i++) {
+      queueFrame(i, true);
+    }
+  };
+
+  // ============================================================
+  // INITIAL FRAME LOADING
   // ============================================================
 
   useEffect(() => {
     let cancelled = false;
 
+    // Reset
     imagesRef.current = [];
     loadingRef.current.clear();
+    loadedRef.current.clear();
+    loadQueueRef.current = [];
+    activeLoadsRef.current = 0;
 
-    const loadInitialFrames = async () => {
+    const startLoading = async () => {
       // ========================================================
       // STEP 1
-      // Load first frame immediately
+      // FIRST FRAME
       // ========================================================
 
       const firstImage = await loadFrame(0, true);
@@ -339,151 +434,126 @@ export default function App() {
 
       // ========================================================
       // STEP 2
-      // Load first 12 frames in parallel
+      // FIRST 15 FRAMES
       // ========================================================
-
-      const initialIndexes = [];
 
       for (
         let i = 1;
         i < Math.min(INITIAL_FRAMES, TOTAL_FRAMES);
         i++
       ) {
-        initialIndexes.push(i);
+        queueFrame(i, true);
       }
-
-      await Promise.all(
-        initialIndexes.map((index) =>
-          loadFrame(index, true)
-        )
-      );
-
-      if (cancelled) return;
 
       // ========================================================
       // STEP 3
-      // Background batches
+      // Queue remaining frames
       // ========================================================
 
-      const loadBatch = async (startIndex) => {
-        if (cancelled) return;
+      for (
+        let i = INITIAL_FRAMES;
+        i < TOTAL_FRAMES;
+        i++
+      ) {
+        queueFrame(i, false);
+      }
 
-        const endIndex = Math.min(
-          startIndex + BATCH_SIZE,
-          TOTAL_FRAMES
-        );
+      // ========================================================
+      // Start processing
+      // ========================================================
 
-        const batch = [];
-
-        for (let i = startIndex; i < endIndex; i++) {
-          batch.push(i);
-        }
-
-        await Promise.all(
-          batch.map((index) =>
-            loadFrame(index, false)
-          )
-        );
-
-        if (cancelled) return;
-
-        // Small delay between batches
-        await new Promise((resolve) => {
-          setTimeout(resolve, 50);
-        });
-
-        // Continue
-        if (endIndex < TOTAL_FRAMES) {
-          loadBatch(endIndex);
-        }
-      };
-
-      // Start after initial frames
-      loadBatch(INITIAL_FRAMES);
+      processQueue();
     };
 
-    // ==========================================================
-    // Start loading
-    // ==========================================================
-
-    loadInitialFrames();
+    startLoading();
 
     return () => {
       cancelled = true;
+
+      loadQueueRef.current = [];
       loadingRef.current.clear();
     };
   }, []);
 
   // ============================================================
-  // SMART SCROLL PRELOADING
+  // SCROLL HANDLER
   // ============================================================
 
   useEffect(() => {
-    let preloadTimeout = null;
-
-    const preloadAroundFrame = (frameIndex) => {
-      // Load frames around current scroll position
-      const start = Math.max(
-        0,
-        frameIndex
-      );
-
-      const end = Math.min(
-        TOTAL_FRAMES,
-        frameIndex + 8
-      );
-
-      for (let i = start; i < end; i++) {
-        if (!imagesRef.current[i]) {
-          loadFrame(i, true);
-        }
-      }
-    };
+    let rafId = null;
 
     const handleScroll = () => {
-      const scrollHeight =
-        document.documentElement.scrollHeight;
-
-      const viewportHeight =
-        window.innerHeight;
-
-      const scrollable =
-        scrollHeight - viewportHeight;
-
-      if (scrollable <= 0) {
-        targetFrameRef.current = 0;
-        return;
-      }
-
-      const scrollFraction = Math.min(
-        1,
-        Math.max(
-          0,
-          window.scrollY / scrollable
-        )
-      );
-
-      const frame =
-        scrollFraction *
-        (TOTAL_FRAMES - 1);
-
-      targetFrameRef.current = frame;
-
-      scrollFrameRef.current =
-        Math.round(frame);
-
       // --------------------------------------------------------
-      // Smart preload
+      // Prevent too many calculations per frame
       // --------------------------------------------------------
 
-      clearTimeout(preloadTimeout);
+      if (rafId) return;
 
-      preloadTimeout = setTimeout(() => {
-        preloadAroundFrame(
-          scrollFrameRef.current
+      rafId = requestAnimationFrame(() => {
+        const scrollHeight =
+          document.documentElement.scrollHeight;
+
+        const viewportHeight =
+          window.innerHeight;
+
+        const scrollable =
+          scrollHeight - viewportHeight;
+
+        if (scrollable <= 0) {
+          targetFrameRef.current = 0;
+          rafId = null;
+          return;
+        }
+
+        // ------------------------------------------------------
+        // Scroll percentage
+        // ------------------------------------------------------
+
+        const scrollFraction = Math.min(
+          1,
+          Math.max(
+            0,
+            window.scrollY / scrollable
+          )
         );
-      }, 30);
+
+        // ------------------------------------------------------
+        // Convert scroll → frame
+        // ------------------------------------------------------
+
+        const frame =
+          scrollFraction *
+          (TOTAL_FRAMES - 1);
+
+        targetFrameRef.current = frame;
+
+        const currentFrame = Math.round(frame);
+
+        // ------------------------------------------------------
+        // Only prioritize when frame changes enough
+        // ------------------------------------------------------
+
+        if (
+          Math.abs(
+            currentFrame -
+              lastScrollFrameRef.current
+          ) >= 2
+        ) {
+          lastScrollFrameRef.current =
+            currentFrame;
+
+          prioritizeAroundFrame(
+            currentFrame
+          );
+        }
+
+        rafId = null;
+      });
     };
+
+    // ----------------------------------------------------------
+    // Events
+    // ----------------------------------------------------------
 
     window.addEventListener(
       'scroll',
@@ -496,6 +566,7 @@ export default function App() {
       handleScroll
     );
 
+    // Initial
     handleScroll();
 
     return () => {
@@ -509,12 +580,14 @@ export default function App() {
         handleScroll
       );
 
-      clearTimeout(preloadTimeout);
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
     };
   }, []);
 
   // ============================================================
-  // SMOOTH CANVAS ANIMATION LOOP
+  // SMOOTH FRAME ANIMATION
   // ============================================================
 
   useEffect(() => {
@@ -556,7 +629,7 @@ export default function App() {
       );
 
       // --------------------------------------------------------
-      // Only redraw when frame changes
+      // Draw only if changed
       // --------------------------------------------------------
 
       if (
@@ -570,11 +643,15 @@ export default function App() {
       }
 
       animationFrameId =
-        requestAnimationFrame(renderLoop);
+        requestAnimationFrame(
+          renderLoop
+        );
     };
 
     animationFrameId =
-      requestAnimationFrame(renderLoop);
+      requestAnimationFrame(
+        renderLoop
+      );
 
     return () => {
       cancelAnimationFrame(
@@ -614,7 +691,7 @@ export default function App() {
   };
 
   // ============================================================
-  // RETURN
+  // JSX
   // ============================================================
 
   return (
@@ -627,7 +704,6 @@ export default function App() {
         selection:text-amber-200
       "
     >
-
       {/* ======================================================
           BACKGROUND CANVAS
           ====================================================== */}
@@ -711,7 +787,6 @@ export default function App() {
           gap-12
         "
       >
-
         {/* Navbar */}
         <Navbar
           onOpenBooking={() =>
@@ -849,7 +924,6 @@ export default function App() {
 
         {/* Footer */}
         <Footer />
-
       </div>
 
       {/* ======================================================
@@ -863,7 +937,6 @@ export default function App() {
         }
         selectedItem={selectedItem}
       />
-
     </div>
   );
 }
