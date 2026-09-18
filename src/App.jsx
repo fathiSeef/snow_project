@@ -18,17 +18,23 @@ import BookingModal from './components/BookingModal';
 import './App.css';
 
 // ============================================================
-// FRAME CONFIGURATION
+// FRAME SETTINGS
 // ============================================================
 
-// 001.webp is skipped because it is a black frame.
-// Animation starts from 002.webp and ends at 100.webp.
+// 001.webp is skipped.
+// Animation uses 002.webp → 100.webp.
 const TOTAL_FRAMES = 99;
 
 const FRAME_URLS = Array.from({ length: TOTAL_FRAMES }, (_, i) => {
-  const frameNum = String(i + 2).padStart(3, '0');
-  return `/image-webp/${frameNum}.webp`;
+  const frameNumber = String(i + 2).padStart(3, '0');
+  return `/image-webp/${frameNumber}.webp`;
 });
+
+// Number of frames loaded immediately when page starts
+const INITIAL_FRAMES = 12;
+
+// Number of frames loaded in each background batch
+const BATCH_SIZE = 15;
 
 export default function App() {
   // ============================================================
@@ -37,20 +43,14 @@ export default function App() {
 
   const canvasRef = useRef(null);
 
-  // Target frame based on page scroll
   const targetFrameRef = useRef(0);
-
-  // Smooth animated frame position
   const smoothFrameRef = useRef(0);
-
-  // Currently displayed frame
   const currentDisplayedFrameRef = useRef(-1);
 
-  // All preloaded images
-  const preloadedImagesRef = useRef([]);
+  const imagesRef = useRef([]);
+  const loadingRef = useRef(new Set());
 
-  // Prevent duplicate frame loading
-  const loadingFramesRef = useRef(new Set());
+  const scrollFrameRef = useRef(0);
 
   // ============================================================
   // STATE
@@ -75,63 +75,66 @@ export default function App() {
 
     if (!ctx) return;
 
-    // ----------------------------------------------------------
-    // Find requested frame
-    // ----------------------------------------------------------
-
-    let img = preloadedImagesRef.current[frameIndex];
+    let image = imagesRef.current[frameIndex];
 
     // ----------------------------------------------------------
-    // If requested frame isn't loaded yet,
-    // find the nearest already-loaded frame.
+    // If requested frame is not ready,
+    // find the closest loaded frame.
     // ----------------------------------------------------------
 
-    if (!img || !img.complete || img.naturalWidth === 0) {
-      let nearestFrame = -1;
+    if (
+      !image ||
+      !image.complete ||
+      image.naturalWidth === 0
+    ) {
+      let fallbackIndex = -1;
 
-      // Search backwards first
+      // Search backwards
       for (let i = frameIndex; i >= 0; i--) {
-        const candidate = preloadedImagesRef.current[i];
+        const candidate = imagesRef.current[i];
 
         if (
           candidate &&
           candidate.complete &&
           candidate.naturalWidth > 0
         ) {
-          nearestFrame = i;
+          fallbackIndex = i;
           break;
         }
       }
 
-      // If no previous frame exists, search forward
-      if (nearestFrame === -1) {
+      // Search forwards if needed
+      if (fallbackIndex === -1) {
         for (let i = frameIndex + 1; i < TOTAL_FRAMES; i++) {
-          const candidate = preloadedImagesRef.current[i];
+          const candidate = imagesRef.current[i];
 
           if (
             candidate &&
             candidate.complete &&
             candidate.naturalWidth > 0
           ) {
-            nearestFrame = i;
+            fallbackIndex = i;
             break;
           }
         }
       }
 
-      if (nearestFrame === -1) return;
+      if (fallbackIndex === -1) return;
 
-      img = preloadedImagesRef.current[nearestFrame];
+      image = imagesRef.current[fallbackIndex];
     }
 
     // ----------------------------------------------------------
-    // Canvas dimensions
+    // Canvas size
     // ----------------------------------------------------------
 
     const width = window.innerWidth;
     const height = window.innerHeight;
 
-    if (canvas.width !== width || canvas.height !== height) {
+    if (
+      canvas.width !== width ||
+      canvas.height !== height
+    ) {
       canvas.width = width;
       canvas.height = height;
     }
@@ -140,12 +143,12 @@ export default function App() {
     // Image dimensions
     // ----------------------------------------------------------
 
-    const imgWidth = img.naturalWidth;
-    const imgHeight = img.naturalHeight;
+    const imageWidth = image.naturalWidth;
+    const imageHeight = image.naturalHeight;
 
-    if (!imgWidth || !imgHeight) return;
+    if (!imageWidth || !imageHeight) return;
 
-    const imgRatio = imgWidth / imgHeight;
+    const imageRatio = imageWidth / imageHeight;
     const canvasRatio = width / height;
 
     let renderWidth;
@@ -155,18 +158,16 @@ export default function App() {
 
     // ----------------------------------------------------------
     // Cover behavior
-    // Similar to:
-    // background-size: cover
     // ----------------------------------------------------------
 
-    if (canvasRatio > imgRatio) {
+    if (canvasRatio > imageRatio) {
       renderWidth = width;
-      renderHeight = width / imgRatio;
+      renderHeight = width / imageRatio;
 
       offsetX = 0;
       offsetY = (height - renderHeight) / 2;
     } else {
-      renderWidth = height * imgRatio;
+      renderWidth = height * imageRatio;
       renderHeight = height;
 
       offsetX = (width - renderWidth) / 2;
@@ -183,7 +184,7 @@ export default function App() {
     ctx.imageSmoothingQuality = 'high';
 
     ctx.drawImage(
-      img,
+      image,
       offsetX,
       offsetY,
       renderWidth,
@@ -192,167 +193,168 @@ export default function App() {
   };
 
   // ============================================================
-  // PROGRESSIVE FRAME PRELOADING
+  // LOAD SINGLE FRAME
+  // ============================================================
+
+  const loadFrame = (index, priority = false) => {
+    return new Promise((resolve) => {
+      // Already loaded
+      const existingImage = imagesRef.current[index];
+
+      if (
+        existingImage &&
+        existingImage.complete &&
+        existingImage.naturalWidth > 0
+      ) {
+        resolve(existingImage);
+        return;
+      }
+
+      // Already loading
+      if (loadingRef.current.has(index)) {
+        const checkExisting = () => {
+          const image = imagesRef.current[index];
+
+          if (
+            image &&
+            image.complete &&
+            image.naturalWidth > 0
+          ) {
+            resolve(image);
+            return;
+          }
+
+          if (!loadingRef.current.has(index)) {
+            resolve(null);
+            return;
+          }
+
+          requestAnimationFrame(checkExisting);
+        };
+
+        checkExisting();
+        return;
+      }
+
+      loadingRef.current.add(index);
+
+      const image = new Image();
+
+      // --------------------------------------------------------
+      // Browser fetch priority
+      // --------------------------------------------------------
+
+      if ('fetchPriority' in image) {
+        image.fetchPriority = priority
+          ? 'high'
+          : 'low';
+      }
+
+      // --------------------------------------------------------
+      // Async decoding
+      // --------------------------------------------------------
+
+      if ('decoding' in image) {
+        image.decoding = 'async';
+      }
+
+      image.onload = async () => {
+        loadingRef.current.delete(index);
+
+        imagesRef.current[index] = image;
+
+        // Decode before using where supported
+        if (image.decode) {
+          try {
+            await image.decode();
+          } catch {
+            // Image is still usable if decode fails
+          }
+        }
+
+        // ------------------------------------------------------
+        // Progress
+        // ------------------------------------------------------
+
+        const loadedCount = imagesRef.current.filter(
+          (img) =>
+            img &&
+            img.complete &&
+            img.naturalWidth > 0
+        ).length;
+
+        const percent = Math.floor(
+          (loadedCount / TOTAL_FRAMES) * 100
+        );
+
+        setLoadedPercent((previous) =>
+          Math.max(previous, percent)
+        );
+
+        resolve(image);
+      };
+
+      image.onerror = () => {
+        loadingRef.current.delete(index);
+        resolve(null);
+      };
+
+      image.src = FRAME_URLS[index];
+    });
+  };
+
+  // ============================================================
+  // PROGRESSIVE PRELOADING
   // ============================================================
 
   useEffect(() => {
     let cancelled = false;
 
-    const images = [];
+    imagesRef.current = [];
+    loadingRef.current.clear();
 
-    preloadedImagesRef.current = images;
-
-    // ----------------------------------------------------------
-    // Load one image
-    // ----------------------------------------------------------
-
-    const loadImage = (index, priority = false) => {
-      return new Promise((resolve) => {
-        // Already loaded
-        const existing = images[index];
-
-        if (
-          existing &&
-          existing.complete &&
-          existing.naturalWidth > 0
-        ) {
-          resolve(existing);
-          return;
-        }
-
-        // Already being loaded
-        if (loadingFramesRef.current.has(index)) {
-          const waitForExisting = () => {
-            if (cancelled) {
-              resolve(null);
-              return;
-            }
-
-            const loadedImage = images[index];
-
-            if (
-              loadedImage &&
-              loadedImage.complete &&
-              loadedImage.naturalWidth > 0
-            ) {
-              resolve(loadedImage);
-            } else {
-              requestAnimationFrame(waitForExisting);
-            }
-          };
-
-          waitForExisting();
-          return;
-        }
-
-        loadingFramesRef.current.add(index);
-
-        const img = new Image();
-
-        // ------------------------------------------------------
-        // Browser loading priority
-        // ------------------------------------------------------
-
-        if ('fetchPriority' in img) {
-          img.fetchPriority = priority ? 'high' : 'low';
-        }
-
-        // ------------------------------------------------------
-        // Async image decoding
-        // ------------------------------------------------------
-
-        if ('decoding' in img) {
-          img.decoding = 'async';
-        }
-
-        img.onload = () => {
-          loadingFramesRef.current.delete(index);
-
-          if (cancelled) {
-            resolve(null);
-            return;
-          }
-
-          images[index] = img;
-
-          // ----------------------------------------------------
-          // Update progress
-          // ----------------------------------------------------
-
-          setLoadedPercent((previous) => {
-            const loadedFrames = images.filter(
-              (image) =>
-                image &&
-                image.complete &&
-                image.naturalWidth > 0
-            ).length;
-
-            const percent = Math.floor(
-              (loadedFrames / TOTAL_FRAMES) * 100
-            );
-
-            return Math.max(previous, percent);
-          });
-
-          resolve(img);
-        };
-
-        img.onerror = () => {
-          loadingFramesRef.current.delete(index);
-
-          // Don't let one failed image stop the whole animation
-          resolve(null);
-        };
-
-        img.src = FRAME_URLS[index];
-      });
-    };
-
-    // ----------------------------------------------------------
-    // Load first frame immediately
-    // ----------------------------------------------------------
-
-    const startLoading = async () => {
+    const loadInitialFrames = async () => {
       // ========================================================
       // STEP 1
-      // Load only the first frame
+      // Load first frame immediately
       // ========================================================
 
-      const firstImage = await loadImage(0, true);
+      const firstImage = await loadFrame(0, true);
 
       if (cancelled) return;
 
       if (firstImage) {
-        images[0] = firstImage;
+        imagesRef.current[0] = firstImage;
 
-        // Draw first frame immediately
         requestAnimationFrame(() => {
           if (!cancelled) {
             drawFrame(0);
           }
         });
 
+        // Show website immediately
         setLoadedPercent(1);
-
-        // IMPORTANT:
-        // Don't make the user wait for all 99 frames.
         setIsLoaded(true);
       }
 
       // ========================================================
       // STEP 2
-      // Load first 10 frames
+      // Load first 12 frames in parallel
       // ========================================================
 
-      const priorityFrames = [];
+      const initialIndexes = [];
 
-      for (let i = 1; i < Math.min(10, TOTAL_FRAMES); i++) {
-        priorityFrames.push(i);
+      for (
+        let i = 1;
+        i < Math.min(INITIAL_FRAMES, TOTAL_FRAMES);
+        i++
+      ) {
+        initialIndexes.push(i);
       }
 
       await Promise.all(
-        priorityFrames.map((index) =>
-          loadImage(index, true)
+        initialIndexes.map((index) =>
+          loadFrame(index, true)
         )
       );
 
@@ -360,73 +362,93 @@ export default function App() {
 
       // ========================================================
       // STEP 3
-      // Load remaining frames gradually
+      // Background batches
       // ========================================================
 
-      const loadRemainingFrames = async () => {
-        for (let i = 10; i < TOTAL_FRAMES; i++) {
-          if (cancelled) return;
+      const loadBatch = async (startIndex) => {
+        if (cancelled) return;
 
-          await loadImage(i, false);
+        const endIndex = Math.min(
+          startIndex + BATCH_SIZE,
+          TOTAL_FRAMES
+        );
 
-          // Small delay so the browser gets breathing room
-          await new Promise((resolve) => {
-            setTimeout(resolve, 15);
-          });
+        const batch = [];
+
+        for (let i = startIndex; i < endIndex; i++) {
+          batch.push(i);
+        }
+
+        await Promise.all(
+          batch.map((index) =>
+            loadFrame(index, false)
+          )
+        );
+
+        if (cancelled) return;
+
+        // Small delay between batches
+        await new Promise((resolve) => {
+          setTimeout(resolve, 50);
+        });
+
+        // Continue
+        if (endIndex < TOTAL_FRAMES) {
+          loadBatch(endIndex);
         }
       };
 
-      // ========================================================
-      // Use browser idle time
-      // ========================================================
-
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(
-          () => {
-            if (!cancelled) {
-              loadRemainingFrames();
-            }
-          },
-          {
-            timeout: 2000,
-          }
-        );
-      } else {
-        setTimeout(() => {
-          if (!cancelled) {
-            loadRemainingFrames();
-          }
-        }, 100);
-      }
+      // Start after initial frames
+      loadBatch(INITIAL_FRAMES);
     };
 
-    startLoading();
+    // ==========================================================
+    // Start loading
+    // ==========================================================
 
-    // ----------------------------------------------------------
-    // Cleanup
-    // ----------------------------------------------------------
+    loadInitialFrames();
 
     return () => {
       cancelled = true;
-      loadingFramesRef.current.clear();
+      loadingRef.current.clear();
     };
   }, []);
 
   // ============================================================
-  // SCROLL → FRAME CONTROL
+  // SMART SCROLL PRELOADING
   // ============================================================
 
   useEffect(() => {
-    let animationFrameId;
+    let preloadTimeout = null;
 
-    // ----------------------------------------------------------
-    // Calculate target frame from scroll
-    // ----------------------------------------------------------
+    const preloadAroundFrame = (frameIndex) => {
+      // Load frames around current scroll position
+      const start = Math.max(
+        0,
+        frameIndex
+      );
+
+      const end = Math.min(
+        TOTAL_FRAMES,
+        frameIndex + 8
+      );
+
+      for (let i = start; i < end; i++) {
+        if (!imagesRef.current[i]) {
+          loadFrame(i, true);
+        }
+      }
+    };
 
     const handleScroll = () => {
-      const scrollable =
-        document.documentElement.scrollHeight -
+      const scrollHeight =
+        document.documentElement.scrollHeight;
+
+      const viewportHeight =
         window.innerHeight;
+
+      const scrollable =
+        scrollHeight - viewportHeight;
 
       if (scrollable <= 0) {
         targetFrameRef.current = 0;
@@ -441,13 +463,27 @@ export default function App() {
         )
       );
 
-      targetFrameRef.current =
-        scrollFraction * (TOTAL_FRAMES - 1);
-    };
+      const frame =
+        scrollFraction *
+        (TOTAL_FRAMES - 1);
 
-    // ----------------------------------------------------------
-    // Event listeners
-    // ----------------------------------------------------------
+      targetFrameRef.current = frame;
+
+      scrollFrameRef.current =
+        Math.round(frame);
+
+      // --------------------------------------------------------
+      // Smart preload
+      // --------------------------------------------------------
+
+      clearTimeout(preloadTimeout);
+
+      preloadTimeout = setTimeout(() => {
+        preloadAroundFrame(
+          scrollFrameRef.current
+        );
+      }, 30);
+    };
 
     window.addEventListener(
       'scroll',
@@ -460,37 +496,69 @@ export default function App() {
       handleScroll
     );
 
-    // Initial calculation
     handleScroll();
 
-    // ----------------------------------------------------------
-    // Smooth rendering loop
-    // ----------------------------------------------------------
+    return () => {
+      window.removeEventListener(
+        'scroll',
+        handleScroll
+      );
+
+      window.removeEventListener(
+        'resize',
+        handleScroll
+      );
+
+      clearTimeout(preloadTimeout);
+    };
+  }, []);
+
+  // ============================================================
+  // SMOOTH CANVAS ANIMATION LOOP
+  // ============================================================
+
+  useEffect(() => {
+    let animationFrameId;
 
     const renderLoop = () => {
-      const target = targetFrameRef.current;
+      const target =
+        targetFrameRef.current;
 
-      const current = smoothFrameRef.current;
+      const current =
+        smoothFrameRef.current;
 
-      const diff = target - current;
+      const difference =
+        target - current;
 
-      // Smoothness
-      if (Math.abs(diff) > 0.001) {
-        smoothFrameRef.current += diff * 0.12;
+      // --------------------------------------------------------
+      // Smooth interpolation
+      // --------------------------------------------------------
+
+      if (Math.abs(difference) > 0.01) {
+        smoothFrameRef.current +=
+          difference * 0.16;
       } else {
         smoothFrameRef.current = target;
       }
 
-      // Convert to actual frame index
+      // --------------------------------------------------------
+      // Frame index
+      // --------------------------------------------------------
+
       const frameIndex = Math.min(
         TOTAL_FRAMES - 1,
         Math.max(
           0,
-          Math.round(smoothFrameRef.current)
+          Math.round(
+            smoothFrameRef.current
+          )
         )
       );
 
+      // --------------------------------------------------------
       // Only redraw when frame changes
+      // --------------------------------------------------------
+
       if (
         frameIndex !==
         currentDisplayedFrameRef.current
@@ -508,21 +576,7 @@ export default function App() {
     animationFrameId =
       requestAnimationFrame(renderLoop);
 
-    // ----------------------------------------------------------
-    // Cleanup
-    // ----------------------------------------------------------
-
     return () => {
-      window.removeEventListener(
-        'scroll',
-        handleScroll
-      );
-
-      window.removeEventListener(
-        'resize',
-        handleScroll
-      );
-
       cancelAnimationFrame(
         animationFrameId
       );
@@ -530,7 +584,7 @@ export default function App() {
   }, []);
 
   // ============================================================
-  // BOOKING MODAL
+  // BOOKING
   // ============================================================
 
   const openBookingWithItem = (item) => {
@@ -539,7 +593,7 @@ export default function App() {
   };
 
   // ============================================================
-  // FRAMER MOTION SECTION ANIMATION
+  // SECTION ANIMATION
   // ============================================================
 
   const sectionVariant = {
@@ -560,15 +614,22 @@ export default function App() {
   };
 
   // ============================================================
-  // JSX
+  // RETURN
   // ============================================================
 
   return (
-    <div className="relative min-h-screen text-slate-100 selection:bg-amber-500/30 selection:text-amber-200">
+    <div
+      className="
+        relative
+        min-h-screen
+        text-slate-100
+        selection:bg-amber-500/30
+        selection:text-amber-200
+      "
+    >
 
       {/* ======================================================
-          BACKGROUND FRAME ANIMATION
-          002.webp → 100.webp
+          BACKGROUND CANVAS
           ====================================================== */}
 
       <canvas
@@ -577,7 +638,7 @@ export default function App() {
       />
 
       {/* ======================================================
-          SUBTLE EDGE VIGNETTE
+          VIGNETTE
           ====================================================== */}
 
       <div
@@ -594,8 +655,7 @@ export default function App() {
       />
 
       {/* ======================================================
-          INITIAL LOADER
-          Only waits for first frame.
+          LOADER
           ====================================================== */}
 
       {!isLoaded && (
@@ -639,7 +699,7 @@ export default function App() {
       )}
 
       {/* ======================================================
-          FOREGROUND WEBSITE CONTENT
+          WEBSITE CONTENT
           ====================================================== */}
 
       <div
